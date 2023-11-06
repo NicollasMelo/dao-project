@@ -1,15 +1,16 @@
 package model.dao.impl;
 
 import Db.DB;
+import Db.DbException;
 import model.dao.SellerDao;
 import model.entities.Department;
 import model.entities.Seller;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class SellerDaoJDBC implements SellerDao {
 
@@ -21,6 +22,35 @@ public class SellerDaoJDBC implements SellerDao {
 
     @Override
     public void insert(Seller obj) {
+
+        PreparedStatement preparedStatement = null;
+        try {
+            preparedStatement = connection.prepareStatement("INSERT INTO seller (Name, Email, BirthDate, BaseSalary, DepartmentId) VALUES (?, ?, ?, ?,?)", Statement.RETURN_GENERATED_KEYS);
+
+            preparedStatement.setString(1,obj.getName());
+            preparedStatement.setString(2,obj.getEmail());
+            preparedStatement.setDate(3, new java.sql.Date(obj.getBirthDate().getTime()));
+            preparedStatement.setDouble(4, obj.getBaseSalary());
+            preparedStatement.setInt(5,obj.getDepartment().getId());
+
+
+            int rowsAffected = preparedStatement.executeUpdate();
+
+            if(rowsAffected > 0) {
+                ResultSet resultSet = preparedStatement.getGeneratedKeys();
+                if(resultSet.next()) {
+                    int id = resultSet.getInt(1);
+                    obj.setId(id);
+                }
+                DB.closeResultSet(resultSet);
+            }else {
+                throw new DbException("Erro inesperado, nenhuma linha alterada.");
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }finally {
+            DB.closeStatement(preparedStatement);
+        }
 
     }
 
@@ -46,17 +76,10 @@ public class SellerDaoJDBC implements SellerDao {
             preparedStatement.setInt(1,id);
             resultSet = preparedStatement.executeQuery();
             if(resultSet.next()){
-                Department dep = new Department();
-                dep.setId(resultSet.getInt("DepartmentId"));
-                dep.setName(resultSet.getString("DepName"));
 
-                Seller obj = new Seller();
-                obj.setId(resultSet.getInt("Id"));
-                obj.setName(resultSet.getString("Name"));
-                obj.setEmail(resultSet.getString("Email"));
-                obj.setBaseSalary(resultSet.getDouble("BaseSalary"));
-                obj.getBirthDate(resultSet.getDate("BirthDate"));
-                obj.setDepartment(dep);
+                Department dep = instantiateDepartment(resultSet);
+                Seller obj = instantiateSeller(resultSet , dep);
+
                 return obj;
             }
             return null;
@@ -68,8 +91,92 @@ public class SellerDaoJDBC implements SellerDao {
         }
     }
 
+    private Department instantiateDepartment(ResultSet resultSet) throws SQLException {
+        Department dep = new Department();
+        dep.setId(resultSet.getInt("DepartmentId"));
+        dep.setName(resultSet.getString("DepName"));
+        return dep;
+    }
+
+    private Seller instantiateSeller(ResultSet resultSet, Department dep) throws SQLException {
+        Seller obj = new Seller();
+        obj.setId(resultSet.getInt("Id"));
+        obj.setName(resultSet.getString("Name"));
+        obj.setEmail(resultSet.getString("Email"));
+        obj.setBaseSalary(resultSet.getDouble("BaseSalary"));
+        obj.getBirthDate();
+        obj.setDepartment(dep);
+        return obj;
+    }
+
     @Override
     public List<Seller> findAll() {
-        return null;
+        PreparedStatement preparedStatement = null;
+        ResultSet resultSet = null;
+        try {
+            preparedStatement = connection.prepareStatement(
+                    "SELECT seller.*,department.Name as DepName FROM seller INNER JOIN department ON seller.DepartmentId = department.Id ORDER BY Name"
+            );
+            resultSet = preparedStatement.executeQuery();
+
+            List<Seller> list = new ArrayList<>();
+            Map<Integer ,Department> map =  new HashMap<>();
+
+            while(resultSet.next()){
+
+                Department dep = map.get(resultSet.getInt("DepartmentId"));
+
+                if(dep == null) {
+                    dep = instantiateDepartment(resultSet);
+                    map.put(resultSet.getInt("DepartmentId"), dep);
+                }
+
+                Seller obj = instantiateSeller(resultSet , dep);
+                list.add(obj);
+            }
+            return list;
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }finally {
+            DB.closeStatement(preparedStatement);
+            DB.closeResultSet(resultSet);
+        }
+    }
+
+    @Override
+    public List<Seller> findByDepartment(Department department) {
+
+        PreparedStatement preparedStatement = null;
+        ResultSet resultSet = null;
+        try {
+            preparedStatement = connection.prepareStatement(
+                    "SELECT seller.*,department.Name as DepName FROM seller INNER JOIN department ON seller.DepartmentId = department.Id WHERE DepartmentId = ? ORDER BY Name"
+            );
+            preparedStatement.setInt(1, department.getId());
+            resultSet = preparedStatement.executeQuery();
+
+            List<Seller> list = new ArrayList<>();
+            Map<Integer ,Department> map =  new HashMap<>();
+
+            while(resultSet.next()){
+
+                Department dep = map.get(resultSet.getInt("DepartmentId"));
+
+                if(dep == null) {
+                    dep = instantiateDepartment(resultSet);
+                    map.put(resultSet.getInt("DepartmentId"), dep);
+                }
+
+                Seller obj = instantiateSeller(resultSet , dep);
+                list.add(obj);
+            }
+            return list;
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }finally {
+            DB.closeStatement(preparedStatement);
+            DB.closeResultSet(resultSet);
+        }
+
     }
 }

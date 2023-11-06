@@ -50,7 +50,7 @@ public class Seller implements Serializable {
         this.email = email;
     }
 
-    public Date getBirthDate(java.sql.Date birthDate) {
+    public Date getBirthDate() {
         return this.birthDate;
     }
 
